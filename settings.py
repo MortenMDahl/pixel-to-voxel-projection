@@ -2,6 +2,9 @@ import cv2 as cv
 
 # Camera Calibration Settings
 
+# Current operating mode
+SAMPLE_MODE = True
+
 # Number of cameras
 NUMBER_OF_CAMERAS = 2
 

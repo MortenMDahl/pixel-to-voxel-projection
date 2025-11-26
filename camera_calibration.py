@@ -3,7 +3,7 @@ import numpy as np
 import glob
 import settings
 
-def calibrate_cameras():
+def calibrate_camera():
     #TODO: Implement camera calibration using two cameras for real
     # Take a photo using each of the two cameras and find the chessboard corners
     for i in range(settings.NUMBER_OF_CAMERAS):
@@ -48,14 +48,17 @@ def calibrate_camera_from_image(image):
 def main():
     objpoints = []
     imgpoints = []
-    for image in glob.glob(settings.SAMPLE_IMAGES_PATH):
-        objpoints, imgpoints = calibrate_camera_from_image(image)
-        ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, settings.CHESSBOARD_PATTERN_SIZE, None, None)
-        print("Camera calibrated!")
-        print("Camera matrix:", camera_matrix)
-        print("Distortion coefficients:", dist_coeffs)
-        print("Rotation vectors:", rvecs)
-        print("Translation vectors:", tvecs)
+    if settings.SAMPLE_MODE:
+        for image in glob.glob(settings.SAMPLE_IMAGES_PATH):
+            objpoints, imgpoints = calibrate_camera_from_image(image)
+            ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv.calibrateCamera(objpoints, imgpoints, settings.CHESSBOARD_PATTERN_SIZE, None, None)
+            print("Camera calibrated!")
+            print("Camera matrix:", camera_matrix)
+            print("Distortion coefficients:", dist_coeffs)
+            print("Rotation vectors:", rvecs)
+            print("Translation vectors:", tvecs)
+    else:
+        print("Camera calibration not implemented for real-time calibration just yet.")
 
 if __name__ == "__main__":
     main()
