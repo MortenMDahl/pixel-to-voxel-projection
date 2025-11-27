@@ -13,7 +13,7 @@ CHESSBOARD_PATTERN_SIZE = (7, 6)
 CHESSBOARD_SQUARE_SIZE = 15 #mm
 
 # Path to sample images for calibration
-SAMPLE_IMAGES_PATH = "sample_calibration_images/*.png"
+SAMPLE_IMAGES_PATH = "sample_calibration_images/*.jpg"
 
 # Calibration criteria
 # (type, max_iter, epsilon)
