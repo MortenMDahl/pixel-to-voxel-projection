@@ -67,61 +67,98 @@ def generate_calibration_data_from_image(image):
 
 
 def main():
-
-    all_objpoints = {}
-    all_imgpoints = {}
     
-    found_images = glob.glob(settings.SAMPLE_IMAGES_PATH)
+    # Find existing images
+    found_images = glob.glob(settings.CALIBRATION_IMAGES_PATH)
+
     print(f"Found {len(found_images)} images for calibration.")
-    reset = input("Do you want to take new calibration photos? (y/n)")
-    delete = input("Do you want to delete the current calibration images? (y/n)")
-    if delete == "y":
+    
+    reset = input("Do you want to take new calibration photos? (y/n) ")
+    delete_images = input("Do you want to delete the current calibration images? (y/n) ")
+    delete_data = input("Do you want to delete the current calibration data? (y/n) ")
+
+    # Delete data if requested
+    if delete_data == "y":
+        data_files = glob.glob(f"{settings.CALIBRATION_DATA_PATH}/*.npy")
+        for file in data_files:
+            os.remove(file)
+        print("Calibration data deleted.")
+
+    # Delete images if requested
+    if delete_images == "y":
         for image in found_images:
             os.remove(image)
+        found_images = [] # Clear the list after deletion
+        print("Calibration images deleted.")
+
+    # Take new photos if requested
     if reset == "y":
         take_calibration_photos()
-        print("Done taking calibration photos. Proceeding to creating calibration data.")
-    
+        print("Done taking calibration photos.")
+        # Refresh the list of images
+        found_images = glob.glob(settings.CALIBRATION_IMAGES_PATH)
+
     if not found_images:
         print("No images found for calibration.")
         return
 
-    camera_identifiers = []
-    for image in found_images:
-        # Get camera number from image name
-        camera_id = image.split("_")[1]
-        camera_identifiers.append(camera_id)
-        # If the camera number is not in the dictionary, add it
-        if camera_id not in all_objpoints:
-            all_objpoints[camera_id] = []
-            all_imgpoints[camera_id] = []
+    # Identify unique cameras
+    # Assumes filename format: "calibration_{camera_id}_{photo_num}.png" (or .jpg)
+    camera_ids = set()
+    for image_path in found_images:
+        filename = os.path.basename(image_path)
+        parts = filename.split("_")
+        if len(parts) >= 2:
+            camera_ids.add(parts[1])
+        else:
+            print(f"Invalid filename format: {filename}")
     
+    print(f"Identified cameras: {camera_ids}")
+
+    # Prepare data structures
+    all_objpoints = {cam_id: [] for cam_id in camera_ids}
+    all_imgpoints = {cam_id: [] for cam_id in camera_ids}
+
+    # Process images
     for image in found_images:
         print(f"Processing {image}...")
         objpoints, imgpoints = generate_calibration_data_from_image(image)
-        # If the calibration data is found, add it to the dictionary
+        
         if objpoints:
-            # Get camera number from image name and add the calibration data to the dictionary relating correct camera data
-            camera_identifier = image.split("_")[1]
-            all_objpoints[camera_identifier].extend(objpoints)
-            all_imgpoints[camera_identifier].extend(imgpoints)
-    
-    if all_objpoints:
-        # Calibrate the cameras
-        for camera_id in camera_identifiers:
-            ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv.calibrateCamera(all_objpoints[camera], all_imgpoints[camera], settings.CHESSBOARD_PATTERN_SIZE, None, None)
-            print("Camera calibrated!")
-            print("Camera matrix:", camera_matrix)
-            print("Distortion coefficients:", dist_coeffs)
-            print("Rotation vectors:", rvecs)
-            print("Translation vectors:", tvecs)
-        # Save the calibration data
-        np.save(f"{settings.CALIBRATION_DATA_PATH}camera_matrix_" + camera_id + ".npy", camera_matrix)
-        np.save(f"{settings.CALIBRATION_DATA_PATH}dist_coeffs_" + camera_id + ".npy", dist_coeffs)
-        np.save(f"{settings.CALIBRATION_DATA_PATH}rvecs_" + camera_id + ".npy", rvecs)
-        np.save(f"{settings.CALIBRATION_DATA_PATH}tvecs_" + camera_id + ".npy", tvecs)
-    else:
-        print("No chessboard corners found in any images.")
+            filename = os.path.basename(image)
+            parts = filename.split("_")
+            if len(parts) >= 2:
+                cam_id = parts[1]
+                if cam_id in all_objpoints:
+                    all_objpoints[cam_id].extend(objpoints)
+                    all_imgpoints[cam_id].extend(imgpoints)
+
+    # Calibrate and save the data
+    for cam_id in camera_ids:
+        if all_objpoints[cam_id] and all_imgpoints[cam_id]:
+            print(f"Calibrating camera {cam_id}...")
+            ret, camera_matrix, dist_coeffs, rvecs, tvecs = cv.calibrateCamera(
+                all_objpoints[cam_id], 
+                all_imgpoints[cam_id], 
+                settings.CHESSBOARD_PATTERN_SIZE, 
+                None, 
+                None
+            )
+            
+            if ret:
+                print(f"Camera {cam_id} calibrated successfully!")
+                print("Camera matrix:", camera_matrix)
+                print("Distortion coefficients:", dist_coeffs)
+                
+                # Save the calibration data
+                np.save(f"{settings.CALIBRATION_DATA_PATH}camera_matrix_{cam_id}.npy", camera_matrix)
+                np.save(f"{settings.CALIBRATION_DATA_PATH}dist_coeffs_{cam_id}.npy", dist_coeffs)
+                np.save(f"{settings.CALIBRATION_DATA_PATH}rvecs_{cam_id}.npy", rvecs)
+                np.save(f"{settings.CALIBRATION_DATA_PATH}tvecs_{cam_id}.npy", tvecs)
+            else:
+                print(f"Calibration failed for camera {cam_id}.")
+        else:
+            print(f"Not enough data to calibrate camera {cam_id}.")
 
 if __name__ == "__main__":
     main()
