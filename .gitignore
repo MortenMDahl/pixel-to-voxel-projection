@@ -14,6 +14,8 @@ ENV/
 .vscode/
 .idea/
 
-# Project specific
-sample_calibration_images/
-calibration_images/
+# Project specific folder structure
+calibration_images/*
+!calibration_images/.gitkeep
+calibration_data/*
+!calibration_data/.gitkeep
