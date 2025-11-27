@@ -2,6 +2,9 @@
 
 This project aims to create a voxel-based 3D model of real-world flying objects using a pair of synchronized cameras. It involves calibrating the cameras to understand their intrinsic and extrinsic parameters, which are then used to project 2D pixel data into 3D voxel space.
 
+# WORK IN PROGRESS
+The code is in no way shape or form in a working state, and is currently under development.
+
 ## Prerequisites
 
 - Python 3.12+
