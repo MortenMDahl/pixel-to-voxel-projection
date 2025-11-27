@@ -2,18 +2,13 @@ import cv2 as cv
 
 # Camera Calibration Settings
 
-# Current operating mode
-SAMPLE_MODE = True
-
-# Number of cameras
-NUMBER_OF_CAMERAS = 2
-
 # Calibration chessboard settings
 CHESSBOARD_PATTERN_SIZE = (7, 6)
 CHESSBOARD_SQUARE_SIZE = 15 #mm
 
 # Path to sample images for calibration
-SAMPLE_IMAGES_PATH = "sample_calibration_images/*.jpg"
+CALIBRATION_IMAGES_PATH = "calibration_images/*.jpg"
+CALIBRATION_DATA_PATH = "calibration_data/"
 
 # Calibration criteria
 # (type, max_iter, epsilon)
