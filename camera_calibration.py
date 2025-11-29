@@ -65,6 +65,24 @@ def generate_calibration_data_from_image(image):
         print(f"Chessboard corners not found in image {image}")
     return objpoints, imgpoints
 
+def load_calibration_data():
+    ports = list_camera_ports()
+    calibration_data = {}
+    try:
+        for i in range(0, len(ports)):
+            calibration_data[i] = {
+                "camera_matrix": np.load(f"calibration_data/camera_matrix_{i}.npy"),
+                "dist_coeffs": np.load(f"calibration_data/dist_coeffs_{i}.npy"),
+                "rotation_vectors": np.load(f"calibration_data/rotation_vectors_{i}.npy"),
+                "translation_vectors": np.load(f"calibration_data/translation_vectors_{i}.npy")
+            }
+        return calibration_data
+    except FileNotFoundError:
+        print("Calibration data not found.")
+        return
+    except Exception as e:
+        print(e)
+        return
 
 def main():
     

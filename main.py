@@ -1,24 +1,48 @@
 import cv2 as cv
 import numpy as np
+import threading
+import sys
+
 import settings
 import camera_calibration
 
-# TODO: Load calibration data
-def load_calibration_data():
-    ports = camera_calibration.list_camera_ports()
-    calibration_data = {}
-    for i in range(0, len(ports)):
-        calibration_data[i] = {
-            "camera_matrix": np.load(f"calibration_data/camera_matrix_{i}.npy"),
-            "dist_coeffs": np.load(f"calibration_data/dist_coeffs_{i}.npy"),
-            "rotation_vectors": np.load(f"calibration_data/rotation_vectors_{i}.npy"),
-            "translation_vectors": np.load(f"calibration_data/translation_vectors_{i}.npy")
-        }
-    return calibration_data
+class CameraStream:
+    def __init__(self, port):
+        self.stream = cv.VideoCapture(port)
+        (self.grabbed, self.frame) = self.stream.read()
+        self.stopped = False
+
+    def start(self):
+        threading.Thread(target=self.update, args=()).start()
+        return self
+
+    def update(self):
+        while True:
+            if self.stopped:
+                break
+            (self.grabbed, self.frame) = self.stream.read()
+
+    def read(self):
+        return self.frame
+
+    def stop(self):
+        self.stopped = True
+        self.stream.release()
 
 
 def main():
-    pass
+
+    
+    ports = camera_calibration.list_camera_ports()
+
+    if len(ports) < 2:
+        sys.exit(f"{len(ports)} ports found, need at least 2.")
+
+    streams = []
+    for port in ports:
+        streams.append(CameraStream(port).start())
+    
+    
 
 if __name__ == "__main__":
     main()
