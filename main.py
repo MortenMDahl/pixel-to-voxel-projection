@@ -29,6 +29,9 @@ class CameraStream:
         self.stopped = True
         self.stream.release()
 
+def pixel_to_voxel(frames):
+
+    pass
 
 def main():
     # Attempt to open ports
@@ -58,6 +61,12 @@ def main():
 
     # Store and display frames
     frames = []
+    gray_new = []
+    gray_old = []
+    masks = []
+    resulting_frames = []
+
+    # Main loop
     while True:
         for i in range(len(streams)):
             # Overwrite frames every loop
@@ -69,11 +78,31 @@ def main():
                 stream.stop()
             break
         
-        # TODO: Add image processing here
-        for frame in frames:
+        for i in range(len(streams)):
             # Undistort the frame
-            frames[frame] = cv.undistort(frame, calibration_data[frame]["camera_matrix"], calibration_data[frame]["dist_coeffs"])
-            
+            frames[i] = cv.undistort(frames[i], calibration_data[i]["camera_matrix"], calibration_data[i]["dist_coeffs"])
+
+            # Convert to grayscale
+            gray_new[i] = cv.cvtColor(frames[i], cv.COLOR_BGR2GRAY)
+
+            # Create mask with the difference of the old and new frames
+            try:
+                diff = cv.absdiff(gray_new[i], gray_old[i])
+                _, mask = cv.threshold(diff, settings.PIXEL_NOISE_THRESHOLD, 255, cv.THRESH_BINARY)
+                masks[i] = mask
+            except IndexError as e:
+                print(f"IndexError: {e}. Skipping the frame.")
+                continue
+
+            # Update the old frame
+            gray_old[i] = gray_new[i]
+
+            # Apply the mask to the frame
+            resulting_frames[i] = cv.bitwise_and(frames[i], frames[i], mask=masks[i])
+            cv.imshow(f"Resulting frame {i}", resulting_frames[i])
+
+        # TODO: Pixel to voxel projection
+
     cv.destroyAllWindows()
 
 if __name__ == "__main__":
