@@ -61,6 +61,14 @@ def generate_calibration_data_from_image(image):
         objpoints.append(objp)
         imgpoints.append(subcorners)
         print(f"Chessboard corners found in image {image}")
+        
+        # Calculate the mean error
+        mean_error = 0
+        for i in range(len(objpoints)):
+            imgpoints2, _ = cv.projectPoints(objpoints[i], rvecs[i], tvecs[i], mtx, dist)
+            error = cv.norm(imgpoints[i], imgpoints2, cv.NORM_L2)/len(imgpoints2)
+            mean_error += error
+        print( "total error: {}".format(mean_error/len(objpoints)) )
     else:
         print(f"Chessboard corners not found in image {image}")
     return objpoints, imgpoints

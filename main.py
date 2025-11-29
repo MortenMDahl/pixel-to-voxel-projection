@@ -69,8 +69,11 @@ def main():
                 stream.stop()
             break
         
-        #TODO: Add image processing here
-
+        # TODO: Add image processing here
+        for frame in frames:
+            # Undistort the frame
+            frames[frame] = cv.undistort(frame, calibration_data[frame]["camera_matrix"], calibration_data[frame]["dist_coeffs"])
+            
     cv.destroyAllWindows()
 
 if __name__ == "__main__":
