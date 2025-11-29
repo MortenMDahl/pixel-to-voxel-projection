@@ -31,18 +31,29 @@ class CameraStream:
 
 
 def main():
-
-    
     ports = camera_calibration.list_camera_ports()
-
+    if ports is None:
+        sys.exit("No ports found.")
     if len(ports) < 2:
         sys.exit(f"{len(ports)} ports found, need at least 2.")
+
+    calibration_data = camera_calibration.load_calibration_data()
 
     streams = []
     for port in ports:
         streams.append(CameraStream(port).start())
     
-    
+    frames = []
+
+    while True:
+        for i in range(len(streams)):
+            frames[i] = streams[i].read()
+            cv.imshow(f"Frame {i}", frames[i])
+        if cv.waitKey(1) & 0xFF == ord("q"):
+            for stream in streams:
+                stream.stop()
+            break
+    cv.destroyAllWindows()
 
 if __name__ == "__main__":
     main()
