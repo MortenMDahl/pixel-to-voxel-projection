@@ -3,8 +3,8 @@ import numpy as np
 import threading
 import sys
 
-import settings
-import camera_calibration
+from . import settings
+from . import camera_calibration
 
 class CameraStream:
     def __init__(self, port):

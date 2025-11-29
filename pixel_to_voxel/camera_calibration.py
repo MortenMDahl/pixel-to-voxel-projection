@@ -2,7 +2,7 @@ import cv2 as cv
 import numpy as np
 import glob
 import os
-import settings
+from . import settings
 import time
 
 # List all available camera ports

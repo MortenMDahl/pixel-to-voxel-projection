@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pixel_to_voxel"
+version = "0.1.0"
+description = "A small python project for pixel to voxel projection"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "opencv-python",
+    "numpy",
+]
+
+[tool.setuptools.packages.find]
+include = ["pixel_to_voxel*"]
