@@ -18,6 +18,27 @@ CRITERIA = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 PIXEL_NOISE_THRESHOLD = 25
 
 
+# Extrinsics Self-Calibration Settings
+
+# Smallest motion-mask blob (in pixels of contour area) accepted as the object
+EXTRINSICS_MIN_CONTOUR_AREA = 5
+
+# Max timestamp gap (seconds) when pairing track samples between two cameras
+TRACK_PAIR_TOLERANCE = 0.02
+
+# Epipolar inlier threshold for the essential-matrix RANSAC, in pixels
+EXTRINSICS_RANSAC_THRESHOLD = 1.5
+
+# Gravity magnitude used for the scale sanity-check, and the relative
+# mismatch of the fitted ballistic acceleration that triggers a warning
+GRAVITY_MS2 = 9.81
+GRAVITY_TOLERANCE = 0.15
+
+# A calibration pass needs at least this many paired samples to join the
+# gravity fit
+MIN_PASS_SAMPLES = 8
+
+
 # Voxel Grid Settings (pixel-to-voxel projection stage)
 
 # Axis-aligned bounds of the reconstruction volume, in world coordinates
