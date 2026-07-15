@@ -18,6 +18,19 @@ CRITERIA = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 PIXEL_NOISE_THRESHOLD = 25
 
 
+# Voxel Grid Settings (pixel-to-voxel projection stage)
+
+# Axis-aligned bounds of the reconstruction volume, in world coordinates
+# (Z-up; metres when using the simulator). Sized to cover the simulator's
+# default trajectory with margin. Voxels outside any camera's view are
+# treated as empty, so the volume should lie inside the shared view frustum.
+VOXEL_GRID_MIN = (-2.0, -2.0, 0.0)
+VOXEL_GRID_MAX = (2.0, 2.0, 2.0)
+
+# Edge length of a single cubic voxel, in the same units (0.05 -> 80x80x40).
+VOXEL_SIZE = 0.05
+
+
 # Simulator Settings (synthetic multi-camera dataset generation)
 
 # Where generated frames + ground-truth calibration are written
