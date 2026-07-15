@@ -13,5 +13,12 @@ dependencies = [
     "numpy",
 ]
 
+[project.optional-dependencies]
+# Rendering backend for the synthetic simulator (pixel_to_voxel.simulator).
+sim = [
+    "pyrender",
+    "trimesh",
+]
+
 [tool.setuptools.packages.find]
 include = ["pixel_to_voxel*"]

@@ -22,6 +22,12 @@ python -m pixel_to_voxel.main
 
 # "Test" suite: currently a single import smoke-check, run as a plain script
 python tests/test_imports.py
+
+# Simulator: generate a synthetic multi-camera dataset (no physical cameras)
+pip install -e ".[sim]"                          # rendering extras (pyrender, trimesh)
+python -m pixel_to_voxel.simulator               # render frames + export ground truth
+python -m pixel_to_voxel.simulator --no-render   # export calibration only (NumPy-only, no extras)
+python tests/test_simulator_geometry.py          # validates K/extrinsics consistency (no rendering)
 ```
 
 There is no configured test runner (no pytest config), linter, or build step beyond setuptools. `tests/test_imports.py` only verifies the package imports; it is not a pytest test.
@@ -39,6 +45,8 @@ Everything lives in the `pixel_to_voxel/` package. There are two stages that com
 `settings.py` is the single source of configuration (chessboard geometry, paths, calibration criteria, noise threshold). All other modules import it as `from . import settings`.
 
 `camera_extrinsics.py` is a stub (`# TODO`). Camera **extrinsics** (relative pose between cameras) are required before any real multi-view voxel projection can work, but are not yet computed — `calibrateCamera`'s per-view rvecs/tvecs are relative to the chessboard, not between cameras.
+
+**Simulator** (`pixel_to_voxel/simulator/`) — a synthetic stand-in for physical cameras, used to develop/validate the projection stage. It renders 2+ time-synchronized virtual pinhole cameras observing a scripted (analytic, not physics-driven) moving object, and exports **exact** ground truth: intrinsics reuse the calibration file names (`camera_matrix_{id}.npy`, `dist_coeffs_{id}.npy` — zeros, ideal pinhole) so they drop into `calibration_data/`; extrinsics are written as 4x4 world→camera matrices (`extrinsics_{id}.npy`), which is the ground truth `camera_extrinsics.py` should eventually recover. World frame is **Z-up**; cameras use **OpenCV axes** (+Z forward, +Y down). Submodules: `rig` (camera geometry + export, NumPy-only), `trajectory` (parabola/line), `renderer` (pyrender offscreen, optional `[sim]` extras, lazily imported), `stream.SimulatedStream` (drop-in for `main.CameraStream`, serves rendered frames from disk via `read()`/`stop()`). The OpenCV↔OpenGL camera-axis flip is centralized in `Camera.pyrender_pose()`.
 
 ## Conventions
 

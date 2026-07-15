@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Packaging / build metadata
+*.egg-info/
+
 # Environments
 .env
 .venv
@@ -19,3 +22,6 @@ calibration_images/*
 !calibration_images/.gitkeep
 calibration_data/*
 !calibration_data/.gitkeep
+
+# Generated synthetic simulator output
+simulation_output/
