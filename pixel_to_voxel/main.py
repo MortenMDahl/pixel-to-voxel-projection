@@ -54,52 +54,47 @@ def main():
         else:
             sys.exit("Exiting.")
     
-    # Open camera stream threads
-    streams = []
-    for port in ports:
-        streams.append(CameraStream(port).start())
+    # Open camera stream threads, keyed by port
+    streams = {port: CameraStream(port).start() for port in ports}
 
-    # Store and display frames
-    frames = []
-    gray_new = []
-    gray_old = []
-    masks = []
-    resulting_frames = []
+    # Previous grayscale frame per port, for frame differencing
+    gray_old = {port: None for port in ports}
 
     # Main loop
     while True:
-        for i in range(len(streams)):
+        raw_frames = {}
+        for port in ports:
             # Overwrite frames every loop
-            frames[i] = streams[i].read()
-            cv.imshow(f"Frame {i}", frames[i])
+            raw_frames[port] = streams[port].read()
+            cv.imshow(f"Frame {port}", raw_frames[port])
         if cv.waitKey(1) & 0xFF == ord("q"):
             # Stop the streams and break the loop
-            for stream in streams:
+            for stream in streams.values():
                 stream.stop()
             break
-        
-        for i in range(len(streams)):
+
+        for port in ports:
             # Undistort the frame
-            frames[i] = cv.undistort(frames[i], calibration_data[i]["camera_matrix"], calibration_data[i]["dist_coeffs"])
+            frame = cv.undistort(raw_frames[port], calibration_data[port]["camera_matrix"], calibration_data[port]["dist_coeffs"])
 
             # Convert to grayscale
-            gray_new[i] = cv.cvtColor(frames[i], cv.COLOR_BGR2GRAY)
+            gray_new = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
 
-            # Create mask with the difference of the old and new frames
-            try:
-                diff = cv.absdiff(gray_new[i], gray_old[i])
-                _, mask = cv.threshold(diff, settings.PIXEL_NOISE_THRESHOLD, 255, cv.THRESH_BINARY)
-                masks[i] = mask
-            except IndexError as e:
-                print(f"IndexError: {e}. Skipping the frame.")
+            # On the first frame there is no previous frame to diff against
+            if gray_old[port] is None:
+                gray_old[port] = gray_new
                 continue
 
+            # Create mask with the difference of the old and new frames
+            diff = cv.absdiff(gray_new, gray_old[port])
+            _, mask = cv.threshold(diff, settings.PIXEL_NOISE_THRESHOLD, 255, cv.THRESH_BINARY)
+
             # Update the old frame
-            gray_old[i] = gray_new[i]
+            gray_old[port] = gray_new
 
             # Apply the mask to the frame
-            resulting_frames[i] = cv.bitwise_and(frames[i], frames[i], mask=masks[i])
-            cv.imshow(f"Resulting frame {i}", resulting_frames[i])
+            resulting_frame = cv.bitwise_and(frame, frame, mask=mask)
+            cv.imshow(f"Resulting frame {port}", resulting_frame)
 
         # TODO: Pixel to voxel projection
 

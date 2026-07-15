@@ -61,14 +61,6 @@ def generate_calibration_data_from_image(image):
         objpoints.append(objp)
         imgpoints.append(subcorners)
         print(f"Chessboard corners found in image {image}")
-        
-        # Calculate the mean error
-        mean_error = 0
-        for i in range(len(objpoints)):
-            imgpoints2, _ = cv.projectPoints(objpoints[i], rvecs[i], tvecs[i], mtx, dist)
-            error = cv.norm(imgpoints[i], imgpoints2, cv.NORM_L2)/len(imgpoints2)
-            mean_error += error
-        print( "total error: {}".format(mean_error/len(objpoints)) )
     else:
         print(f"Chessboard corners not found in image {image}")
     return objpoints, imgpoints
@@ -77,12 +69,12 @@ def load_calibration_data():
     ports = list_camera_ports()
     calibration_data = {}
     try:
-        for i in range(0, len(ports)):
-            calibration_data[i] = {
-                "camera_matrix": np.load(f"calibration_data/camera_matrix_{i}.npy"),
-                "dist_coeffs": np.load(f"calibration_data/dist_coeffs_{i}.npy"),
-                "rotation_vectors": np.load(f"calibration_data/rotation_vectors_{i}.npy"),
-                "translation_vectors": np.load(f"calibration_data/translation_vectors_{i}.npy")
+        for port in ports:
+            calibration_data[port] = {
+                "camera_matrix": np.load(f"{settings.CALIBRATION_DATA_PATH}camera_matrix_{port}.npy"),
+                "dist_coeffs": np.load(f"{settings.CALIBRATION_DATA_PATH}dist_coeffs_{port}.npy"),
+                "rotation_vectors": np.load(f"{settings.CALIBRATION_DATA_PATH}rotation_vectors_{port}.npy"),
+                "translation_vectors": np.load(f"{settings.CALIBRATION_DATA_PATH}translation_vectors_{port}.npy")
             }
         return calibration_data
     except FileNotFoundError:
@@ -179,8 +171,8 @@ def main():
                 # Save the calibration data
                 np.save(f"{settings.CALIBRATION_DATA_PATH}camera_matrix_{cam_id}.npy", camera_matrix)
                 np.save(f"{settings.CALIBRATION_DATA_PATH}dist_coeffs_{cam_id}.npy", dist_coeffs)
-                np.save(f"{settings.CALIBRATION_DATA_PATH}rvecs_{cam_id}.npy", rvecs)
-                np.save(f"{settings.CALIBRATION_DATA_PATH}tvecs_{cam_id}.npy", tvecs)
+                np.save(f"{settings.CALIBRATION_DATA_PATH}rotation_vectors_{cam_id}.npy", rvecs)
+                np.save(f"{settings.CALIBRATION_DATA_PATH}translation_vectors_{cam_id}.npy", tvecs)
             else:
                 print(f"Calibration failed for camera {cam_id}.")
         else:
