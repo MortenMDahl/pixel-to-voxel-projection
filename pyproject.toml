@@ -22,3 +22,7 @@ sim = [
 
 [tool.setuptools.packages.find]
 include = ["pixel_to_voxel*"]
+
+[tool.setuptools.package-data]
+# The web dashboard's page and vendored assets ship inside the package.
+pixel_to_voxel = ["web/*", "web/static/*"]

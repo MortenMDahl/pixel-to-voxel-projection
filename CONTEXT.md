@@ -32,6 +32,18 @@ _Avoid_: trajectory (reserved for the 3D path)
 The object's path through the world frame in 3D. Scripted analytically in the simulator; recovered by triangulation from real tracks.
 _Avoid_: track (2D, per camera), arc
 
+**Target**:
+The single flying object currently being tracked — what the dashboard reports on. There is at most one; multi-target tracking is out of scope for now.
+_Avoid_: object (in UI copy), blob
+
+**State estimate**:
+The tracker's filtered description of the object at an instant: world-frame centre position and velocity, from which speed, heading, and climb rate are derived.
+_Avoid_: track state, solution
+
+**Heading**:
+Compass-style bearing of the object's horizontal travel in the world frame: 0° = world +Y ("grid north", rig-relative — not true north), clockwise, 090° = world +X.
+_Avoid_: course, azimuth
+
 **Motion mask**:
 The per-frame binary image marking pixels that changed beyond the noise threshold — the object's frame-differenced silhouette.
 _Avoid_: foreground mask, diff

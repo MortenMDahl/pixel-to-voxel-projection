@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixel-to-Voxel — Target Dashboard</title>
+<link rel="stylesheet" href="/static/style.css">
+<script type="importmap">
+  {"imports": {"three": "/static/three.module.min.js"}}
+</script>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="dot"></span>PIXEL-TO-VOXEL</div>
+  <div class="pills">
+    <span id="pill-projection" class="pill">PROJECTION —</span>
+    <span id="pill-voxels" class="pill">VOXELS —</span>
+    <span id="pill-fps" class="pill">FPS —</span>
+  </div>
+</header>
+
+<main>
+  <section id="cameras" class="col"></section>
+
+  <section id="scene" class="col">
+    <div id="scene-container"></div>
+    <div id="scene-hint">drag rotate · wheel zoom · right-drag pan</div>
+  </section>
+
+  <section id="side" class="col">
+    <div class="panel" id="target-panel">
+      <div class="panel-title">TARGET <span id="target-status" class="tag tag-idle">NO TARGET</span></div>
+      <div class="metric-big">
+        <div class="value"><span id="t-speed">—</span><span class="unit">m/s</span></div>
+        <div class="sub"><span id="t-speed-kmh">—</span> km/h</div>
+      </div>
+      <div class="metric-row">
+        <div class="metric"><div class="label">HEADING</div>
+          <div class="value-sm"><span id="t-heading">—</span><span class="unit">°</span> <span id="t-cardinal" class="cardinal"></span></div></div>
+        <div class="metric"><div class="label">CLIMB</div>
+          <div class="value-sm"><span id="t-climb">—</span><span class="unit">m/s</span></div></div>
+        <div class="metric"><div class="label">ALTITUDE</div>
+          <div class="value-sm"><span id="t-alt">—</span><span class="unit">m</span></div></div>
+      </div>
+      <div class="metric-pos"><div class="label">POSITION (world, m)</div>
+        <div id="t-pos" class="mono">—</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">SPEED <span class="panel-note">m/s over session</span></div>
+      <canvas id="chart-speed" width="360" height="70"></canvas>
+      <div class="panel-title">ALTITUDE <span class="panel-note">m over session</span></div>
+      <canvas id="chart-alt" width="360" height="70"></canvas>
+    </div>
+
+    <div class="panel" id="sim-panel" hidden>
+      <div class="panel-title">SIMULATION</div>
+      <div class="sim-row">
+        <button id="sim-restart">⟳ RESTART</button>
+        <div class="progress"><div id="sim-progress"></div></div>
+        <span id="sim-frames" class="mono">—</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">EVENTS</div>
+      <ul id="events"></ul>
+    </div>
+  </section>
+</main>
+
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>
