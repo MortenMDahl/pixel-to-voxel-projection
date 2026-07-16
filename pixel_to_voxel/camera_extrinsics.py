@@ -465,10 +465,8 @@ def report_diagnostics(diagnostics):
 # Interactive calibration session
 # ---------------------------------------------------------------------------
 
-def detect_centroid(gray_new, gray_old):
-    """Motion-mask centroid of the largest blob, or None if nothing plausible."""
-    diff = cv.absdiff(gray_new, gray_old)
-    _, mask = cv.threshold(diff, settings.PIXEL_NOISE_THRESHOLD, 255, cv.THRESH_BINARY)
+def mask_centroid(mask):
+    """Centroid (u, v) of the largest plausible blob in a binary mask, or None."""
     contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
     if not contours:
         return None
@@ -479,6 +477,13 @@ def detect_centroid(gray_new, gray_old):
     if moments["m00"] == 0:
         return None
     return (moments["m10"] / moments["m00"], moments["m01"] / moments["m00"])
+
+
+def detect_centroid(gray_new, gray_old):
+    """Motion-mask centroid of the largest blob, or None if nothing plausible."""
+    diff = cv.absdiff(gray_new, gray_old)
+    _, mask = cv.threshold(diff, settings.PIXEL_NOISE_THRESHOLD, 255, cv.THRESH_BINARY)
+    return mask_centroid(mask)
 
 
 def prompt_baselines(ports):
