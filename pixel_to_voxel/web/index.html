@@ -29,21 +29,31 @@
 
   <section id="side" class="col">
     <div class="panel" id="target-panel">
-      <div class="panel-title">TARGET <span id="target-status" class="tag tag-idle">NO TARGET</span></div>
-      <div class="metric-big">
-        <div class="value"><span id="t-speed">—</span><span class="unit">m/s</span></div>
-        <div class="sub"><span id="t-speed-kmh">—</span> km/h</div>
+      <div class="panel-title">TARGETS <span id="target-count" class="tag tag-idle">0</span></div>
+      <table id="target-table">
+        <thead><tr>
+          <th></th><th>ID</th><th>CAMS</th><th>m/s</th><th>HDG</th><th>ALT</th><th>CLB</th>
+        </tr></thead>
+        <tbody id="target-rows"></tbody>
+      </table>
+      <div id="target-detail">
+        <div class="panel-title">TARGET <span id="sel-id" class="mono">—</span>
+          <span id="sel-cams" class="tag tag-idle">—</span></div>
+        <div class="metric-big">
+          <div class="value"><span id="t-speed">—</span><span class="unit">m/s</span></div>
+          <div class="sub"><span id="t-speed-kmh">—</span> km/h</div>
+        </div>
+        <div class="metric-row">
+          <div class="metric"><div class="label">HEADING</div>
+            <div class="value-sm"><span id="t-heading">—</span><span class="unit">°</span> <span id="t-cardinal" class="cardinal"></span></div></div>
+          <div class="metric"><div class="label">CLIMB</div>
+            <div class="value-sm"><span id="t-climb">—</span><span class="unit">m/s</span></div></div>
+          <div class="metric"><div class="label">ALTITUDE</div>
+            <div class="value-sm"><span id="t-alt">—</span><span class="unit">m</span></div></div>
+        </div>
+        <div class="metric-pos"><div class="label">POSITION (world, m)</div>
+          <div id="t-pos" class="mono">—</div></div>
       </div>
-      <div class="metric-row">
-        <div class="metric"><div class="label">HEADING</div>
-          <div class="value-sm"><span id="t-heading">—</span><span class="unit">°</span> <span id="t-cardinal" class="cardinal"></span></div></div>
-        <div class="metric"><div class="label">CLIMB</div>
-          <div class="value-sm"><span id="t-climb">—</span><span class="unit">m/s</span></div></div>
-        <div class="metric"><div class="label">ALTITUDE</div>
-          <div class="value-sm"><span id="t-alt">—</span><span class="unit">m</span></div></div>
-      </div>
-      <div class="metric-pos"><div class="label">POSITION (world, m)</div>
-        <div id="t-pos" class="mono">—</div></div>
     </div>
 
     <div class="panel">

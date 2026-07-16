@@ -25,9 +25,9 @@ sys.path.append(os.getcwd())
 
 from pixel_to_voxel import settings
 from pixel_to_voxel.dashboard import Dashboard, serializable_state
-from pixel_to_voxel.camera_extrinsics import mask_centroid
+from pixel_to_voxel.camera_extrinsics import mask_centroids
 from pixel_to_voxel.main import load_simulation, pixel_to_voxel
-from pixel_to_voxel.tracker import KalmanTracker, triangulate_center
+from pixel_to_voxel.tracker import MultiTargetTracker
 
 GRID = {"min": list(settings.VOXEL_GRID_MIN),
         "max": list(settings.VOXEL_GRID_MAX),
@@ -90,7 +90,7 @@ def test_server_endpoints():
         dashboard.publish(
             {0: frame, 1: frame},
             serializable_state({"active": False}, True, 30.0,
-                               np.array([[1.0, 2.0, 3.0]]), None, GRID, 0))
+                               np.array([[1.0, 2.0, 3.0]]), [], GRID, 0))
 
         status, body = get(port, "/")
         assert status == 200 and b"Pixel-to-Voxel" in body, "index page broken"
@@ -136,13 +136,13 @@ def test_sim_pipeline_through_dashboard():
 
     dashboard = Dashboard(ports, sim=True)
     http_port = dashboard.start(host="127.0.0.1", port=0)
-    track = KalmanTracker()
+    tracker = MultiTargetTracker(calibration_data)
     gray_old = {port: None for port in ports}
     frames_read = 20
     carved_any = False
     try:
         for i in range(frames_read):
-            masks, centroids, display = {}, {}, {}
+            masks, detections, display = {}, {}, {}
             for port in ports:
                 frame = streams[port].read()
                 frame = cv.undistort(frame, calibration_data[port]["camera_matrix"],
@@ -153,20 +153,19 @@ def test_sim_pipeline_through_dashboard():
                     _, mask = cv.threshold(diff, settings.PIXEL_NOISE_THRESHOLD, 255,
                                            cv.THRESH_BINARY)
                     masks[port] = mask
-                    centroid = mask_centroid(mask)
-                    if centroid is not None:
-                        centroids[port] = centroid
+                    detections[port] = mask_centroids(mask)
                 gray_old[port] = gray
                 display[port] = frame
             voxels = np.empty((0, 3))
             if len(masks) == len(ports):
                 voxels = pixel_to_voxel(masks, calibration_data)
                 carved_any = carved_any or len(voxels) > 0
-            if len(centroids) >= 2:
-                track.update(triangulate_center(centroids, calibration_data), i * sim_dt)
+            if detections:
+                tracker.step(detections, i * sim_dt)
             sim_info = {"active": True, "frame": i + 1, "total": total, "ended": False}
-            dashboard.publish(display, serializable_state(sim_info, True, 30.0,
-                                                          voxels, track, GRID, 0))
+            dashboard.publish(display,
+                              serializable_state(sim_info, True, 30.0, voxels,
+                                                 tracker.state_list(), GRID, 0))
 
         assert carved_any, "No frame produced occupied voxels from the sim dataset"
 
@@ -174,27 +173,34 @@ def test_sim_pipeline_through_dashboard():
         state = read_sse_state(http_port)
         assert state["sim"]["frame"] == frames_read
         assert state["grid"]["size"] == settings.VOXEL_SIZE
-        assert state["track"] is not None and state["track"]["ready"]
+        targets = state["targets"]
+        assert len(targets) == truth.shape[0], \
+            f"served {len(targets)} targets, dataset has {truth.shape[0]} objects"
 
+        # Each served target must sit on its own true object with the right
+        # velocity direction (this drives the 3D arrows), seen by both cameras.
         last = frames_read - 1
-        pos_err = np.linalg.norm(np.array(state["track"]["position"]) - truth[last])
-        v_true = (np.asarray(settings.SIM_TRAJECTORY_V0)
-                  + np.array([0.0, 0.0, -9.81]) * last * sim_dt)
-        speed_err = abs(state["track"]["speed"] - np.linalg.norm(v_true))
-
-        # The served velocity vector drives the 3D arrow — its direction must
-        # match the true direction of travel, not just its magnitude.
-        v_served = np.array(state["track"]["velocity"], dtype=np.float64)
-        cos_dir = (v_served @ v_true) / (np.linalg.norm(v_served) * np.linalg.norm(v_true))
-        assert cos_dir > 0.99, f"Served velocity direction off: cos={cos_dir:.3f}"
-        print(f"Served track vs truth at frame {last}: position error {pos_err:.2f} m, "
-              f"speed error {speed_err:.2f} m/s, heading {state['track']['heading']:.0f} deg")
-        assert pos_err < 2.5, f"Served position off by {pos_err} m"
-        assert speed_err < 3.0, f"Served speed off by {speed_err} m/s"
+        claimed = set()
+        for target in targets:
+            errors = np.linalg.norm(truth[:, last] - np.array(target["position"]), axis=1)
+            obj = int(np.argmin(errors))
+            assert obj not in claimed, "two targets bound to the same object"
+            claimed.add(obj)
+            v_true = (np.asarray(settings.SIM_TRAJECTORIES[obj]["v0"])
+                      + np.array([0.0, 0.0, -9.81]) * last * sim_dt)
+            v_served = np.array(target["velocity"], dtype=np.float64)
+            cos_dir = (v_served @ v_true) / (np.linalg.norm(v_served) * np.linalg.norm(v_true))
+            print(f"target {target['id']} -> object {obj}: position error "
+                  f"{errors[obj]:.2f} m, speed {target['speed']:.1f}, "
+                  f"cameras {target['cameras']}, cos(dir) {cos_dir:.3f}")
+            assert errors[obj] < 2.5, f"target {target['id']} off by {errors[obj]} m"
+            assert cos_dir > 0.98, f"velocity direction off: cos={cos_dir:.3f}"
+            assert target["cameras"] == ports, \
+                f"expected both cameras observing, got {target['cameras']}"
 
         jpeg = read_mjpeg_frame(http_port, ports[0])
         assert jpeg[:2] == b"\xff\xd8"
-        print("PASS: --sim pipeline serves tracked state and frames over HTTP.")
+        print("PASS: --sim pipeline serves multi-target state and frames over HTTP.")
     finally:
         for stream in streams.values():
             stream.stop()

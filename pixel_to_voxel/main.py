@@ -13,7 +13,7 @@ from . import settings
 from . import camera_calibration
 from . import camera_extrinsics
 from .dashboard import Dashboard, serializable_state
-from .tracker import KalmanTracker, triangulate_center
+from .tracker import MultiTargetTracker
 
 class CameraStream:
     def __init__(self, port):
@@ -53,46 +53,63 @@ def voxel_grid_centers():
         _voxel_centers = np.stack(grid, axis=-1).reshape(-1, 3)
     return _voxel_centers
 
-def pixel_to_voxel(masks, cameras):
-    """Carve the voxel grid down to the voxels supported by every camera's
-    motion mask (visual-hull space carving).
+# Which voxel centres each camera can see depends only on the calibration and
+# image sizes, so the projection tables are built once and reused every frame.
+_carve_cache = {"key": None, "per_camera": None, "visible_count": None}
 
-    A voxel survives only if its centre projects onto a nonzero mask pixel in
-    every camera, so the result is the intersection of the back-projected mask
-    cones; voxels behind a camera or outside its image are treated as empty.
+def _carve_tables(masks, cameras):
+    key = tuple(sorted(
+        (port, mask.shape,
+         np.asarray(cameras[port]["camera_matrix"], dtype=np.float64).tobytes(),
+         np.asarray(cameras[port]["extrinsic"], dtype=np.float64).tobytes())
+        for port, mask in masks.items()))
+    if _carve_cache["key"] == key:
+        return _carve_cache
+    centers = voxel_grid_centers()
+    per_camera = {}
+    visible_count = np.zeros(len(centers), dtype=np.int32)
+    for port, mask in masks.items():
+        K = np.asarray(cameras[port]["camera_matrix"], dtype=np.float64)
+        extrinsic = np.asarray(cameras[port]["extrinsic"], dtype=np.float64)
+        cam_points = centers @ extrinsic[:3, :3].T + extrinsic[:3, 3]
+        visible = cam_points[:, 2] > 0
+        uvw = cam_points[visible] @ K.T
+        pixels = uvw[:, :2] / uvw[:, 2:3]
+        u = np.rint(pixels[:, 0]).astype(np.intp)
+        v = np.rint(pixels[:, 1]).astype(np.intp)
+        height, width = mask.shape[:2]
+        inside = (u >= 0) & (u < width) & (v >= 0) & (v < height)
+        indices = np.flatnonzero(visible)[inside]
+        per_camera[port] = (indices, u[inside], v[inside])
+        visible_count[indices] += 1
+    _carve_cache.update(key=key, per_camera=per_camera, visible_count=visible_count)
+    return _carve_cache
+
+def pixel_to_voxel(masks, cameras):
+    """Carve the voxel grid against every camera's motion mask (visual hull
+    with partial coverage — see docs/adr/0003).
+
+    The rig's cameras point in different directions to expand the total field
+    of view, so not every camera sees every voxel. A voxel is occupied when
+    **every camera that can see it** has mask support at its projection and
+    **at least two** cameras can see it (one bearing cannot fix depth). A
+    camera that sees the voxel as background carves it — which also erases
+    two-camera ghost intersections wherever a third camera has coverage.
     Masks come from undistorted frames, so the ideal pinhole model applies.
 
-    masks   -- {port: binary (H, W) mask, nonzero where motion was detected}
+    masks   -- {port: binary (H, W) mask} for EVERY camera in ``cameras``
     cameras -- {port: {"camera_matrix": 3x3 K, "extrinsic": 4x4 world->camera}}
     Returns the (M, 3) world coordinates of the occupied voxel centres.
     """
     centers = voxel_grid_centers()
-    occupied = np.ones(len(centers), dtype=bool)
-
+    tables = _carve_tables(masks, cameras)
+    support = np.zeros(len(centers), dtype=np.int32)
     for port, mask in masks.items():
-        # Only voxels that survived every previous camera need re-testing
-        live = np.flatnonzero(occupied)
-        if live.size == 0:
-            break
-
-        K = np.asarray(cameras[port]["camera_matrix"], dtype=np.float64)
-        extrinsic = np.asarray(cameras[port]["extrinsic"], dtype=np.float64)
-        cam_points = centers[live] @ extrinsic[:3, :3].T + extrinsic[:3, 3]
-
-        supported = np.zeros(live.size, dtype=bool)
-        # Only voxels in front of the camera can project into the image
-        front = np.flatnonzero(cam_points[:, 2] > 0)
-        if front.size:
-            uvw = cam_points[front] @ K.T
-            pixels = uvw[:, :2] / uvw[:, 2:3]
-            u = np.rint(pixels[:, 0]).astype(np.intp)
-            v = np.rint(pixels[:, 1]).astype(np.intp)
-            height, width = mask.shape[:2]
-            inside = (u >= 0) & (u < width) & (v >= 0) & (v < height)
-            supported[front[inside]] = mask[v[inside], u[inside]] > 0
-
-        occupied[live] = supported
-
+        indices, u, v = tables["per_camera"][port]
+        hit = mask[v, u] > 0
+        support[indices[hit]] += 1
+    visible = tables["visible_count"]
+    occupied = (visible >= 2) & (support == visible)
     return centers[occupied]
 
 def load_simulation(directory=None):
@@ -184,9 +201,7 @@ def main(sim=False, browser=True):
         sim_dt = settings.SIM_TRAJECTORY_DURATION / max(total_frames - 1, 1)
     frames_played = 0
     run_id = 0
-    track = KalmanTracker()
-    track_announced = False
-    one_camera_announced = False
+    tracker = MultiTargetTracker(calibration_data) if have_extrinsics else None
     ended_announced = False
     fps = None
 
@@ -197,7 +212,7 @@ def main(sim=False, browser=True):
         while True:
             loop_start = time.perf_counter()
             masks = {}
-            centroids = {}
+            detections = {}
             display_frames = {}
             got_frame = False
             for port in ports:
@@ -219,12 +234,10 @@ def main(sim=False, browser=True):
                     diff = cv.absdiff(gray_new, gray_old[port])
                     _, mask = cv.threshold(diff, settings.PIXEL_NOISE_THRESHOLD, 255, cv.THRESH_BINARY)
                     masks[port] = mask
-                    # Detected object centroid, marked in the camera pane
-                    centroid = camera_extrinsics.mask_centroid(mask)
-                    if centroid is not None:
-                        centroids[port] = centroid
-                        cv.drawMarker(frame,
-                                      (int(round(centroid[0])), int(round(centroid[1]))),
+                    # All detected centroids, marked in the camera pane
+                    detections[port] = camera_extrinsics.mask_centroids(mask)
+                    for u, v in detections[port]:
+                        cv.drawMarker(frame, (int(round(u)), int(round(v))),
                                       (0, 255, 255), cv.MARKER_CROSS, 20, 2)
 
                 # Update the old frame
@@ -243,21 +256,19 @@ def main(sim=False, browser=True):
             if sim and got_frame:
                 frames_played = min(frames_played + 1, total_frames)
 
-            # Track the object centre from the triangulated mask centroids
-            if have_extrinsics and got_frame and len(centroids) >= 2:
+            # Associate detections to targets and update their filters
+            targets = []
+            if tracker is not None and got_frame:
                 now = (frames_played - 1) * sim_dt if sim else time.perf_counter()
-                track.update(triangulate_center(centroids, calibration_data), now)
+                lifecycle = tracker.step(detections, now)
+                for target_id in lifecycle["confirmed"]:
+                    dashboard.add_event(f"target {target_id} confirmed")
+                for target_id in lifecycle["deleted"]:
+                    dashboard.add_event(f"target {target_id} lost")
+                targets = tracker.state_list()
+            elif tracker is not None:
+                targets = tracker.state_list()
 
-            # Event-log transitions
-            if track.ready and not track_announced:
-                dashboard.add_event("track acquired")
-                track_announced = True
-            if got_frame and len(centroids) == 1 and track_announced:
-                if not one_camera_announced:
-                    dashboard.add_event("warning: only one camera detecting")
-                    one_camera_announced = True
-            elif len(centroids) >= 2:
-                one_camera_announced = False
             if sim and not got_frame and frames_played and not ended_announced:
                 dashboard.add_event("sequence ended")
                 ended_announced = True
@@ -269,18 +280,17 @@ def main(sim=False, browser=True):
                             "ended": bool(frames_played and not got_frame)}
             dashboard.publish(display_frames,
                               serializable_state(sim_info, have_extrinsics, fps,
-                                                 voxels, track, grid_info, run_id))
+                                                 voxels, targets, grid_info, run_id))
 
             # A dashboard restart request rewinds the sim sequence
             if sim and dashboard.pop_restart():
                 for stream in streams.values():
                     stream.reset()
                 gray_old = {port: None for port in ports}
-                track = KalmanTracker()
+                if tracker is not None:
+                    tracker = MultiTargetTracker(calibration_data)
                 frames_played = 0
                 run_id += 1
-                track_announced = False
-                one_camera_announced = False
                 ended_announced = False
                 dashboard.add_event("sequence restarted")
 

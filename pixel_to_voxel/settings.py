@@ -51,6 +51,35 @@ TRACKER_PROCESS_NOISE = 20.0
 # Filter updates required before speed/heading are displayed
 TRACKER_MIN_UPDATES = 5
 
+# Multi-Target Settings
+
+# Most detections kept per camera per frame (largest blobs first)
+MAX_DETECTIONS_PER_CAMERA = 15
+
+# Detections closer than this (pixels) are merged into one before
+# association: frame differencing splits a fast mover into leading/trailing
+# blobs about one body-length apart, which must not become phantom twins
+DETECTION_MERGE_PX = 25.0
+
+# Pixel gate when assigning detections to a predicted target in one camera
+TARGET_GATE_PX = 40.0
+
+# Symmetric epipolar-distance gate (pixels) for pairing unassigned detections
+# between two cameras when spawning a new tentative target
+EPIPOLAR_GATE_PX = 8.0
+
+# Lifecycle ("balanced"): a tentative target is confirmed after this many
+# triangulated updates, and any target is deleted after this long unseen by
+# every camera (coasting on prediction does not count as seen)
+TARGET_CONFIRM_UPDATES = 5
+TARGET_DELETE_AFTER_S = 1.5
+
+# No new target may spawn within this distance (metres) of an existing one:
+# leftover detections near a target are its own debris — e.g. the trailing
+# blob when frame differencing splits a fast mover into two blobs — not a
+# separate object
+SPAWN_SUPPRESSION_RADIUS_M = 5.0
+
 
 # Voxel Grid Settings (pixel-to-voxel projection stage)
 
@@ -92,10 +121,18 @@ SIM_CAMERA_POSITIONS = [
 ]
 SIM_LOOK_AT = (0.0, 0.0, 20.0)
 
-# Default scripted trajectory: a ballistic parabola (Z-up gravity) rising to
-# ~45 m over 6 seconds while crossing ~48 m horizontally.
-SIM_TRAJECTORY_P0 = (-24.0, 0.0, 0.5)   # start position
-SIM_TRAJECTORY_V0 = (8.0, 0.0, 29.4)    # initial velocity
-# Duration is kept short enough that the ballistic arc stays above the ground
-# plane (z >= 0) for every frame, so the object is never occluded by the floor.
+# Scripted trajectories: ballistic parabolas (Z-up gravity), one flying object
+# each. The default trio crosses mid-air to exercise multi-target association;
+# the second dips below the ground shortly before the end, exercising target
+# deletion ("lost") while the others fly the full duration.
+SIM_TRAJECTORIES = [
+    {"p0": (-24.0, 0.0, 0.5), "v0": (8.0, 0.0, 29.4)},
+    {"p0": (24.0, 10.0, 1.0), "v0": (-8.0, -2.0, 28.0)},
+    {"p0": (0.0, -8.0, 0.3), "v0": (1.0, 3.0, 27.5)},
+]
 SIM_TRAJECTORY_DURATION = 6.0           # seconds
+
+# First-trajectory aliases, used where a single object is enough (tests,
+# extrinsics examples)
+SIM_TRAJECTORY_P0 = SIM_TRAJECTORIES[0]["p0"]
+SIM_TRAJECTORY_V0 = SIM_TRAJECTORIES[0]["v0"]

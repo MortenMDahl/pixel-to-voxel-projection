@@ -29,12 +29,13 @@ def _require_pyrender():
     return trimesh, pyrender
 
 
-def _build_scene(object_radius, object_color):
-    """Create the static scene (ground + scenery + lights) and the moving object.
+def _build_scene(object_radius, object_colors):
+    """Create the static scene (ground + scenery + lights) and the moving objects.
 
-    Returns ``(scene, object_node)``. The static content gives frame differencing
-    a stable background, and the moving object is the only thing that changes
-    between frames — exactly what ``main.py``'s ``absdiff`` step isolates.
+    Returns ``(scene, object_nodes)``, one node per colour in ``object_colors``.
+    The static content gives frame differencing a stable background, and the
+    moving objects are the only things that change between frames — exactly
+    what ``main.py``'s ``absdiff`` step isolates.
     """
     trimesh, pyrender = _require_pyrender()
 
@@ -69,26 +70,37 @@ def _build_scene(object_radius, object_color):
     light_pose[:3, 3] = [0.0, 0.0, 5.0]
     scene.add(light, pose=light_pose)
 
-    # The moving object: a coloured sphere added at the origin; its pose is
-    # updated per frame by the caller.
-    sphere = trimesh.creation.icosphere(subdivisions=3, radius=object_radius)
-    sphere.visual.vertex_colors = np.array(list(object_color) + [255], dtype=np.uint8)
-    object_node = scene.add(pyrender.Mesh.from_trimesh(sphere, smooth=True))
+    # The moving objects: coloured spheres added at the origin; their poses
+    # are updated per frame by the caller.
+    object_nodes = []
+    for color in object_colors:
+        sphere = trimesh.creation.icosphere(subdivisions=3, radius=object_radius)
+        sphere.visual.vertex_colors = np.array(list(color) + [255], dtype=np.uint8)
+        object_nodes.append(scene.add(pyrender.Mesh.from_trimesh(sphere, smooth=True)))
 
-    return scene, object_node
+    return scene, object_nodes
 
 
-def render_sequence(rig, positions, output_dir, object_radius=0.15,
-                    object_color=(220, 40, 40)):
+_OBJECT_COLORS = [(220, 40, 40), (40, 120, 220), (240, 200, 40),
+                  (40, 200, 120), (220, 120, 220)]
+
+
+def render_sequence(rig, positions, output_dir, object_radius=0.15):
     """Render every camera in ``rig`` for every frame in ``positions``.
 
-    Writes ``output_dir/cam{id}/frame_{i:04d}.png`` (BGR PNGs, matching what the
+    ``positions`` is (num_frames, 3) for a single object or
+    (num_objects, num_frames, 3) for several. Writes
+    ``output_dir/cam{id}/frame_{i:04d}.png`` (BGR PNGs, matching what the
     OpenCV pipeline expects from a real camera). All cameras observe the same
-    object position per frame, so the streams are perfectly time-synchronised.
+    object positions per frame, so the streams are perfectly time-synchronised.
     """
     _, pyrender = _require_pyrender()
 
-    scene, object_node = _build_scene(object_radius, object_color)
+    positions = np.asarray(positions, dtype=np.float64)
+    if positions.ndim == 2:
+        positions = positions[None]
+    colors = [_OBJECT_COLORS[i % len(_OBJECT_COLORS)] for i in range(len(positions))]
+    scene, object_nodes = _build_scene(object_radius, colors)
 
     # Register one pyrender camera node per rig camera; we switch the scene's
     # active camera before each render.
@@ -107,11 +119,12 @@ def render_sequence(rig, positions, output_dir, object_radius=0.15,
     renderer = pyrender.OffscreenRenderer(viewport_width=w, viewport_height=h)
 
     try:
-        for frame_idx, pos in enumerate(positions):
-            # Move the object to this frame's ground-truth position.
-            obj_pose = np.eye(4)
-            obj_pose[:3, 3] = pos
-            scene.set_pose(object_node, obj_pose)
+        for frame_idx in range(positions.shape[1]):
+            # Move every object to this frame's ground-truth position.
+            for node, pos in zip(object_nodes, positions[:, frame_idx]):
+                obj_pose = np.eye(4)
+                obj_pose[:3, 3] = pos
+                scene.set_pose(node, obj_pose)
 
             for cam, node in zip(rig.cameras, cam_nodes):
                 scene.main_camera_node = node

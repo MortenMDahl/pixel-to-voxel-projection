@@ -465,18 +465,32 @@ def report_diagnostics(diagnostics):
 # Interactive calibration session
 # ---------------------------------------------------------------------------
 
-def mask_centroid(mask):
-    """Centroid (u, v) of the largest plausible blob in a binary mask, or None."""
+def mask_centroids(mask, max_count=None):
+    """Centroids (u, v) of every plausible blob in a binary mask, largest first."""
+    if max_count is None:
+        max_count = settings.MAX_DETECTIONS_PER_CAMERA
     contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return None
-    largest = max(contours, key=cv.contourArea)
-    if cv.contourArea(largest) < settings.EXTRINSICS_MIN_CONTOUR_AREA:
-        return None
-    moments = cv.moments(largest)
-    if moments["m00"] == 0:
-        return None
-    return (moments["m10"] / moments["m00"], moments["m01"] / moments["m00"])
+    contours = sorted(contours, key=cv.contourArea, reverse=True)[:max_count]
+    centroids = []
+    for contour in contours:
+        if cv.contourArea(contour) < settings.EXTRINSICS_MIN_CONTOUR_AREA:
+            break                      # sorted by area; the rest are smaller
+        moments = cv.moments(contour)
+        if moments["m00"] == 0:
+            continue
+        centroids.append((moments["m10"] / moments["m00"],
+                          moments["m01"] / moments["m00"]))
+    return centroids
+
+
+def mask_centroid(mask):
+    """Centroid of the single largest plausible blob, or None.
+
+    The extrinsics calibration session tracks exactly one object, so it keeps
+    the largest-blob rule even now that the projection stage is multi-target.
+    """
+    centroids = mask_centroids(mask, max_count=1)
+    return centroids[0] if centroids else None
 
 
 def detect_centroid(gray_new, gray_old):

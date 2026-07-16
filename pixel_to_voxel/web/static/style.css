@@ -108,6 +108,24 @@ main {
 .tag-warn { background: #3a3013; color: var(--warn); }
 .tag-good { background: #10362a; color: var(--good); }
 
+/* Target table */
+#target-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+#target-table th {
+  font-size: 9px; letter-spacing: 1px; color: var(--muted);
+  text-align: left; padding: 2px 6px; border-bottom: 1px solid var(--panel-edge);
+}
+#target-table td {
+  font-family: var(--mono); font-size: 12px; padding: 4px 6px;
+  border-bottom: 1px solid var(--panel-edge); cursor: pointer;
+}
+#target-table tbody tr:hover { background: #1a1f2b; }
+#target-table tbody tr.selected { background: #1c2536; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.cams-ok { color: var(--good); }
+.cams-one { color: var(--warn); }
+.cams-none { color: var(--bad); }
+#target-detail { border-top: 1px solid var(--panel-edge); padding-top: 8px; }
+
 .metric-big .value { font-family: var(--mono); font-size: 44px; font-weight: 600; line-height: 1.1; }
 .metric-big .unit { font-size: 16px; color: var(--muted); margin-left: 6px; }
 .metric-big .sub { font-family: var(--mono); font-size: 13px; color: var(--muted); }

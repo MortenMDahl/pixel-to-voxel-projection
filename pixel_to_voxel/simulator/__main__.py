@@ -33,13 +33,12 @@ def build_default_rig():
     )
 
 
-def build_default_trajectory(num_frames):
-    return trajectory.parabola(
-        p0=S.SIM_TRAJECTORY_P0,
-        v0=S.SIM_TRAJECTORY_V0,
-        num_frames=num_frames,
-        duration=S.SIM_TRAJECTORY_DURATION,
-    )
+def build_default_trajectories(num_frames):
+    """(num_objects, num_frames, 3) ground-truth positions from settings."""
+    return np.stack([
+        trajectory.parabola(p0=spec["p0"], v0=spec["v0"], num_frames=num_frames,
+                            duration=S.SIM_TRAJECTORY_DURATION)
+        for spec in S.SIM_TRAJECTORIES])
 
 
 def main():
@@ -56,13 +55,14 @@ def main():
     os.makedirs(args.output, exist_ok=True)
 
     rig = build_default_rig()
-    positions = build_default_trajectory(args.frames)
+    positions = build_default_trajectories(args.frames)
 
     # Always export exact ground truth (pure NumPy, no heavy deps).
+    # object_positions.npy is (num_objects, num_frames, 3).
     rig.save(args.output)
     np.save(os.path.join(args.output, "object_positions.npy"), positions)
-    print(f"Wrote calibration for {len(rig.cameras)} cameras + "
-          f"{len(positions)} object positions to {args.output}")
+    print(f"Wrote calibration for {len(rig.cameras)} cameras + ground truth for "
+          f"{positions.shape[0]} objects x {positions.shape[1]} frames to {args.output}")
 
     if args.no_render:
         print("Skipping rendering (--no-render).")
@@ -73,7 +73,7 @@ def main():
     print("Rendering frames (this needs the [sim] extras)...")
     render_sequence(rig, positions, args.output, object_radius=S.SIM_OBJECT_RADIUS)
     for cam in rig.cameras:
-        print(f"  cam{cam.id}: {len(positions)} frames -> "
+        print(f"  cam{cam.id}: {positions.shape[1]} frames -> "
               f"{os.path.join(args.output, f'cam{cam.id}')}")
     print("Done.")
 

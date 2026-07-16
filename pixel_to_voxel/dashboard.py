@@ -142,14 +142,19 @@ class Dashboard:
             self._server.server_close()
 
 
-def serializable_state(sim_info, projection_enabled, fps, voxels, track, grid,
+def serializable_state(sim_info, projection_enabled, fps, voxels, targets, grid,
                        run_id):
-    """Build the JSON-able state dict published each frame."""
+    """Build the JSON-able state dict published each frame.
+
+    ``targets`` is the already-JSON-able list from MultiTargetTracker.state_list():
+    per confirmed target its id, position, velocity, speed, heading, climb, and
+    the ``cameras`` currently observing it (fewer than 2 means it is coasting).
+    """
     voxel_list = np.asarray(voxels, dtype=np.float64).reshape(-1, 3)
     sent = voxel_list
     if len(sent) > MAX_VOXELS_SENT:
         sent = sent[:: len(sent) // MAX_VOXELS_SENT + 1]
-    state = {
+    return {
         "run_id": run_id,
         "sim": sim_info,
         "projection": bool(projection_enabled),
@@ -157,18 +162,8 @@ def serializable_state(sim_info, projection_enabled, fps, voxels, track, grid,
         "voxel_count": int(len(voxel_list)),
         "voxels": [[round(float(c), 2) for c in row] for row in sent],
         "grid": grid,
-        "track": None,
+        "targets": list(targets or []),
     }
-    if track is not None and track.n_updates:
-        state["track"] = {
-            "ready": bool(track.ready),
-            "position": [round(float(c), 2) for c in track.position],
-            "velocity": [round(float(c), 2) for c in track.velocity],
-            "speed": round(track.speed, 2),
-            "heading": round(track.heading_deg, 1),
-            "climb": round(track.climb_rate, 2),
-        }
-    return state
 
 
 class _DashboardHandler(BaseHTTPRequestHandler):

@@ -22,7 +22,8 @@ sys.path.append(os.getcwd())
 
 from pixel_to_voxel import settings
 from pixel_to_voxel.main import pixel_to_voxel
-from pixel_to_voxel.simulator.rig import CameraRig
+from pixel_to_voxel.simulator.rig import (Camera, CameraRig, intrinsic_matrix,
+                                          look_at_extrinsic)
 from pixel_to_voxel.simulator import trajectory
 
 SPHERE_RADIUS = settings.SIM_OBJECT_RADIUS  # match the simulated object
@@ -95,5 +96,70 @@ def main():
     print("PASS: pixel_to_voxel() recovers the object location from exact masks.")
 
 
+def divergent_rig():
+    """Three cameras aimed at different points — the expanded-FOV rig shape."""
+    positions = [(-10.0, -48.0, 1.5), (0.0, -48.0, 1.5), (10.0, -48.0, 1.5)]
+    targets = [(-20.0, 0.0, 20.0), (0.0, 0.0, 20.0), (20.0, 0.0, 20.0)]
+    cameras = []
+    for i, (pos, target) in enumerate(zip(positions, targets)):
+        R, t = look_at_extrinsic(pos, target)
+        K = intrinsic_matrix(settings.SIM_IMAGE_WIDTH, settings.SIM_IMAGE_HEIGHT,
+                             settings.SIM_FOV_DEG)
+        cameras.append(Camera(id=i, width=settings.SIM_IMAGE_WIDTH,
+                              height=settings.SIM_IMAGE_HEIGHT, K=K, R=R, t=t,
+                              eye=np.asarray(pos)))
+    return CameraRig(cameras)
+
+
+def test_partial_visibility():
+    """The visibility-aware rule on a divergent rig (see docs/adr/0003):
+    voxels supported by every camera that sees them survive with only two
+    views, and a contradicting third view kills two-view ghosts."""
+    rig = divergent_rig()
+    cameras = {cam.id: {"camera_matrix": cam.K, "extrinsic": cam.extrinsic_4x4()}
+               for cam in rig.cameras}
+
+    def masks_for(point, supporting_ids):
+        masks = {}
+        for cam in rig.cameras:
+            if cam.id in supporting_ids:
+                masks[cam.id] = silhouette_mask(cam, point, SPHERE_RADIUS)
+                assert masks[cam.id].any(), f"camera {cam.id} cannot see {point}"
+            else:
+                masks[cam.id] = np.zeros((cam.height, cam.width), np.uint8)
+        return masks
+
+    # A point outside camera 0's view but seen by cameras 1 and 2: occupied.
+    # (The old every-camera rule would have carved it for lacking cam-0 support.)
+    edge_point = np.array([14.0, 10.0, 20.0])
+    pix, valid = rig.cameras[0].project(edge_point)
+    u, v = pix[0]
+    assert not (valid[0] and 0 <= u < rig.cameras[0].width
+                and 0 <= v < rig.cameras[0].height), "point unexpectedly in cam 0 view"
+    voxels = pixel_to_voxel(masks_for(edge_point, {1, 2}), cameras)
+    assert len(voxels), "two-camera support in the overlap zone left no voxels"
+    # Cameras 1 and 2 subtend only ~10 deg at this point, so the two-view hull
+    # is a long thin lens (~2r/sin(theta) ~ 5 m); its centroid stays centred.
+    centroid_err = np.linalg.norm(voxels.mean(axis=0) - edge_point)
+    spread = np.linalg.norm(voxels - edge_point, axis=1).max()
+    assert centroid_err < 2.0, f"edge-zone hull centroid off by {centroid_err} m"
+    assert spread < 6.0, f"voxels far outside the narrow-baseline hull: {spread}"
+
+    # A ghost: cameras 0 and 1 'support' a point that camera 2 also sees —
+    # but camera 2 shows background there, so the intersection must be carved.
+    ghost_point = np.array([-5.0, 10.0, 20.0])
+    for cam in rig.cameras:
+        pix, valid = cam.project(ghost_point)
+        u, v = pix[0]
+        assert valid[0] and 0 <= u < cam.width and 0 <= v < cam.height, \
+            f"ghost point must be visible to camera {cam.id}"
+    voxels = pixel_to_voxel(masks_for(ghost_point, {0, 1}), cameras)
+    near_ghost = (np.linalg.norm(voxels - ghost_point, axis=1) < 3.0).sum() if len(voxels) else 0
+    assert near_ghost == 0, f"{near_ghost} ghost voxels survived a contradicting view"
+
+    print("PASS: visibility-aware carving handles the divergent rig (edge zones + ghost veto).")
+
+
 if __name__ == "__main__":
     main()
+    test_partial_visibility()

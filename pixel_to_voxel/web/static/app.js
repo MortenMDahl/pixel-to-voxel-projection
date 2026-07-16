@@ -1,5 +1,6 @@
 // Dashboard client: consumes /events (SSE) + /stream/{port}.mjpg and renders
-// the target card, charts, event log, sim controls, and the three.js scene.
+// the target table + selected detail, charts, event log, sim controls, and
+// the three.js scene (voxels, per-target trails and velocity arrows).
 
 import * as THREE from 'three';
 import { OrbitControls } from './OrbitControls.js';
@@ -9,8 +10,12 @@ const TRAIL_MAX = 900;
 const CHART_MAX = 900;
 const CARDINALS = ['N','NNE','NE','ENE','E','ESE','SE','SSE',
                    'S','SSW','SW','WSW','W','WNW','NW','NNW'];
+// Per-target colors, keyed by id % length — consistent across table and 3D
+const PALETTE = ['#ffd747', '#4ea1ff', '#ff4bd8', '#35c98e', '#ff8c42',
+                 '#b487ff', '#4fd8eb', '#f2637f', '#a8d94a', '#e0e0e0'];
 
 const $ = id => document.getElementById(id);
+const targetColor = id => PALETTE[id % PALETTE.length];
 
 // --------------------------------------------------------------------------
 // three.js scene (Z-up world, matching the pipeline convention)
@@ -40,21 +45,6 @@ let sceneBuilt = false;
 let voxelMesh = null;
 let voxelSize = 1;
 let gridZ = [0, 1];
-
-const trailPositions = new Float32Array(TRAIL_MAX * 3);
-let trailLength = 0;
-const trailGeometry = new THREE.BufferGeometry();
-trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
-trailGeometry.setDrawRange(0, 0);
-const trail = new THREE.Line(trailGeometry,
-  new THREE.LineBasicMaterial({ color: 0xffd747 }));
-trail.frustumCulled = false;
-scene.add(trail);
-
-const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0),
-  new THREE.Vector3(), 1, 0xff4bd8, 2.5, 1.4);
-arrow.visible = false;
-scene.add(arrow);
 
 function buildScene(grid) {
   const lo = new THREE.Vector3(...grid.min);
@@ -114,20 +104,62 @@ function updateVoxels(voxels) {
   if (voxelMesh.instanceColor) voxelMesh.instanceColor.needsUpdate = true;
 }
 
-function pushTrailPoint(p) {
-  if (trailLength === TRAIL_MAX) {
-    trailPositions.copyWithin(0, 3);
-    trailLength -= 1;
-  }
-  trailPositions.set(p, trailLength * 3);
-  trailLength += 1;
-  trailGeometry.setDrawRange(0, trailLength);
-  trailGeometry.attributes.position.needsUpdate = true;
+// Per-target 3D objects: id -> {trailGeo, trailPos, trailLen, line, arrow}
+const targets3d = new Map();
+
+function ensureTarget3d(id) {
+  if (targets3d.has(id)) return targets3d.get(id);
+  const trailPos = new Float32Array(TRAIL_MAX * 3);
+  const trailGeo = new THREE.BufferGeometry();
+  trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
+  trailGeo.setDrawRange(0, 0);
+  const line = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({
+    color: targetColor(id), transparent: true, opacity: 1.0 }));
+  line.frustumCulled = false;
+  scene.add(line);
+  const arrow = new THREE.ArrowHelper(new THREE.Vector3(0, 1, 0),
+    new THREE.Vector3(), 1, targetColor(id), 2.5, 1.4);
+  arrow.visible = false;
+  scene.add(arrow);
+  const entry = { trailGeo, trailPos, trailLen: 0, line, arrow };
+  targets3d.set(id, entry);
+  return entry;
 }
 
-function clearTrail() {
-  trailLength = 0;
-  trailGeometry.setDrawRange(0, 0);
+function removeTarget3d(id) {
+  const entry = targets3d.get(id);
+  if (!entry) return;
+  scene.remove(entry.line);
+  scene.remove(entry.arrow);
+  entry.trailGeo.dispose();
+  targets3d.delete(id);
+}
+
+function updateTarget3d(target, selected) {
+  const entry = ensureTarget3d(target.id);
+  if (entry.trailLen === TRAIL_MAX) {
+    entry.trailPos.copyWithin(0, 3);
+    entry.trailLen -= 1;
+  }
+  entry.trailPos.set(target.position, entry.trailLen * 3);
+  entry.trailLen += 1;
+  entry.trailGeo.setDrawRange(0, entry.trailLen);
+  entry.trailGeo.attributes.position.needsUpdate = true;
+  entry.line.material.opacity = selected ? 1.0 : 0.35;
+
+  const v = new THREE.Vector3(...(target.velocity ?? [0, 0, 0]));
+  entry.arrow.visible = false;
+  if (target.speed > 0.1 && v.lengthSq() > 1e-4) {
+    entry.arrow.position.set(...target.position);
+    entry.arrow.setDirection(v.normalize());
+    entry.arrow.setLength(target.speed,
+      Math.min(3, target.speed * 0.25), Math.min(1.6, target.speed * 0.12));
+    entry.arrow.visible = true;
+  }
+}
+
+function clearAll3dTargets() {
+  for (const id of [...targets3d.keys()]) removeTarget3d(id);
 }
 
 function resize() {
@@ -148,7 +180,7 @@ window.addEventListener('resize', resize);
 resize();
 
 // --------------------------------------------------------------------------
-// Charts (hand-drawn sparklines)
+// Charts (hand-drawn sparklines, following the selected target)
 // --------------------------------------------------------------------------
 
 const charts = {
@@ -200,6 +232,7 @@ function clearCharts() {
 let camerasBuilt = false;
 let lastRunId = null;
 let lastEventId = 0;
+let selectedId = null;
 
 function buildCameras(ports) {
   for (const port of ports) {
@@ -224,13 +257,61 @@ function fmt(x, digits = 1) {
   return x === null || x === undefined ? '—' : x.toFixed(digits);
 }
 
+function camsClass(n) {
+  return n >= 2 ? 'cams-ok' : (n === 1 ? 'cams-one' : 'cams-none');
+}
+
+function renderTable(targets) {
+  const rows = targets.map(t => {
+    const sel = t.id === selectedId ? ' class="selected"' : '';
+    const cams = t.cameras.length ? t.cameras.join(',') : '—';
+    return `<tr data-id="${t.id}"${sel}>` +
+      `<td><span class="swatch" style="background:${targetColor(t.id)}"></span></td>` +
+      `<td>${t.id}</td>` +
+      `<td class="${camsClass(t.cameras.length)}">${cams}</td>` +
+      `<td>${t.speed.toFixed(1)}</td>` +
+      `<td>${String(Math.round(t.heading)).padStart(3, '0')}</td>` +
+      `<td>${t.position[2].toFixed(0)}</td>` +
+      `<td>${(t.climb >= 0 ? '+' : '') + t.climb.toFixed(1)}</td></tr>`;
+  }).join('');
+  $('target-rows').innerHTML = rows;
+  for (const tr of $('target-rows').querySelectorAll('tr')) {
+    tr.addEventListener('click', () => { selectedId = Number(tr.dataset.id); });
+  }
+}
+
+function renderDetail(target) {
+  if (!target) {
+    $('sel-id').textContent = '—';
+    $('sel-cams').textContent = 'NO TARGET';
+    $('sel-cams').className = 'tag tag-idle';
+    for (const id of ['t-speed','t-speed-kmh','t-heading','t-climb','t-alt']) $(id).textContent = '—';
+    $('t-cardinal').textContent = '';
+    $('t-pos').textContent = '—';
+    return;
+  }
+  const n = target.cameras.length;
+  $('sel-id').textContent = `#${target.id}`;
+  $('sel-cams').textContent = n >= 2 ? `${n} CAMS` : (n === 1 ? '1 CAM — COASTING' : 'COASTING');
+  $('sel-cams').className = 'tag ' + (n >= 2 ? 'tag-good' : (n === 1 ? 'tag-warn' : 'tag-idle'));
+  $('t-speed').textContent = target.speed.toFixed(1);
+  $('t-speed-kmh').textContent = (target.speed * 3.6).toFixed(0);
+  $('t-heading').textContent = String(Math.round(target.heading)).padStart(3, '0');
+  $('t-cardinal').textContent = CARDINALS[Math.round(target.heading / 22.5) % 16];
+  $('t-climb').textContent = (target.climb >= 0 ? '+' : '') + target.climb.toFixed(1);
+  $('t-alt').textContent = target.position[2].toFixed(1);
+  $('t-pos').textContent =
+    `x ${target.position[0].toFixed(1)}   y ${target.position[1].toFixed(1)}   z ${target.position[2].toFixed(1)}`;
+}
+
 function update(state) {
   if (!camerasBuilt && state.ports) buildCameras(state.ports);
   if (!sceneBuilt && state.grid) buildScene(state.grid);
 
   if (lastRunId !== null && state.run_id !== lastRunId) {
-    clearTrail();
+    clearAll3dTargets();
     clearCharts();
+    selectedId = null;
   }
   lastRunId = state.run_id;
 
@@ -241,40 +322,32 @@ function update(state) {
 
   updateVoxels(state.voxels || []);
 
-  const track = state.track;
-  const statusEl = $('target-status');
-  if (track && track.ready) {
-    statusEl.textContent = 'TRACKING';
-    statusEl.className = 'tag tag-good';
-    $('t-speed').textContent = track.speed.toFixed(1);
-    $('t-speed-kmh').textContent = (track.speed * 3.6).toFixed(0);
-    $('t-heading').textContent = String(Math.round(track.heading)).padStart(3, '0');
-    $('t-cardinal').textContent = CARDINALS[Math.round(track.heading / 22.5) % 16];
-    $('t-climb').textContent = (track.climb >= 0 ? '+' : '') + track.climb.toFixed(1);
-    $('t-alt').textContent = track.position[2].toFixed(1);
-    $('t-pos').textContent =
-      `x ${track.position[0].toFixed(1)}   y ${track.position[1].toFixed(1)}   z ${track.position[2].toFixed(1)}`;
-    pushTrailPoint(track.position);
-    pushChart(charts.speed, track.speed);
-    pushChart(charts.alt, track.position[2]);
-    const v = new THREE.Vector3(...(track.velocity ?? [0, 0, 0]));
-    const speed = track.speed;
-    arrow.visible = false;
-    if (speed > 0.1 && v.lengthSq() > 1e-4) {
-      arrow.position.set(...track.position);
-      arrow.setDirection(v.normalize());
-      arrow.setLength(speed, Math.min(3, speed * 0.25), Math.min(1.6, speed * 0.12));
-      arrow.visible = true;
-    }
-  } else {
-    statusEl.textContent = track ? 'ACQUIRING' : 'NO TARGET';
-    statusEl.className = 'tag ' + (track ? 'tag-warn' : 'tag-idle');
-    arrow.visible = false;
-    if (!track) {
-      for (const id of ['t-speed','t-speed-kmh','t-heading','t-climb','t-alt']) $(id).textContent = '—';
-      $('t-cardinal').textContent = '';
-      $('t-pos').textContent = '—';
-    }
+  const targets = state.targets || [];
+  const count = $('target-count');
+  count.textContent = String(targets.length);
+  count.className = 'tag ' + (targets.length ? 'tag-good' : 'tag-idle');
+
+  // Selection: keep if still present, else auto-select the first target
+  if (!targets.some(t => t.id === selectedId)) {
+    const previous = selectedId;
+    selectedId = targets.length ? targets[0].id : null;
+    if (previous !== selectedId) clearCharts();
+  }
+
+  renderTable(targets);
+  const selected = targets.find(t => t.id === selectedId) || null;
+  renderDetail(selected);
+
+  // 3D trails/arrows: update present targets, drop vanished ones
+  const present = new Set(targets.map(t => t.id));
+  for (const id of [...targets3d.keys()]) {
+    if (!present.has(id)) removeTarget3d(id);
+  }
+  for (const target of targets) updateTarget3d(target, target.id === selectedId);
+
+  if (selected) {
+    pushChart(charts.speed, selected.speed);
+    pushChart(charts.alt, selected.position[2]);
   }
 
   // Sim panel

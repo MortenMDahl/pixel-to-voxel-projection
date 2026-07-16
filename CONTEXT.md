@@ -33,8 +33,20 @@ The object's path through the world frame in 3D. Scripted analytically in the si
 _Avoid_: track (2D, per camera), arc
 
 **Target**:
-The single flying object currently being tracked — what the dashboard reports on. There is at most one; multi-target tracking is out of scope for now.
-_Avoid_: object (in UI copy), blob
+A flying object being tracked, identified by an incrementing id. Tentative until enough triangulated updates confirm it; deleted after going unseen too long. The dashboard reports only confirmed targets.
+_Avoid_: object (in UI copy), blob, track (reserved for the 2D calibration sequences)
+
+**Detection**:
+One motion-mask blob centroid in one camera in one frame — the raw per-camera evidence targets are built from.
+_Avoid_: measurement, blob
+
+**Association**:
+The per-frame assignment of detections to predicted targets (and of leftover detections to new tentative targets). Which cameras' detections a target won this frame is its `cameras` property.
+_Avoid_: matching, correspondence (reserved for calibration pairs)
+
+**Ghost**:
+A spurious cross-camera pairing that triangulates to a plausible but nonexistent 3D point. Suppressed by detection merging, spawn rules, and third-camera contradiction.
+_Avoid_: phantom, false track
 
 **State estimate**:
 The tracker's filtered description of the object at an instant: world-frame centre position and velocity, from which speed, heading, and climb rate are derived.
