@@ -43,17 +43,19 @@ def _build_scene(object_radius, object_color):
         bg_color=np.array([0.05, 0.05, 0.08]),
     )
 
-    # Ground plane (a thin, wide box centred at the world origin, top at z=0).
-    ground = trimesh.creation.box(extents=[10.0, 10.0, 0.05])
-    ground.apply_translation([0.0, 0.0, -0.025])
+    # Ground plane (a thin, wide box centred at the world origin, top at z=0),
+    # sized so the far-range cameras never see past its edge.
+    ground = trimesh.creation.box(extents=[300.0, 300.0, 0.5])
+    ground.apply_translation([0.0, 0.0, -0.25])
     ground.visual.vertex_colors = np.array([90, 90, 100, 255], dtype=np.uint8)
     scene.add(pyrender.Mesh.from_trimesh(ground, smooth=False))
 
-    # A few static coloured boxes so the background has texture/features.
+    # A few static coloured boxes so the background has texture/features,
+    # building-sized to stay visible at ~50 m.
     scenery = [
-        ([2.0, 2.0, 0.4], [0.8, 0.8, 0.8], [180, 120, 60]),
-        ([-2.5, 1.5, 0.3], [0.6, 0.6, 0.6], [60, 140, 170]),
-        ([1.0, -2.5, 0.25], [0.5, 0.5, 0.5], [150, 160, 70]),
+        ([25.0, 12.0, 0.0], [8.0, 8.0, 6.0], [180, 120, 60]),
+        ([-30.0, 18.0, 0.0], [10.0, 10.0, 8.0], [60, 140, 170]),
+        ([10.0, 32.0, 0.0], [6.0, 6.0, 10.0], [150, 160, 70]),
     ]
     for pos, extents, color in scenery:
         box = trimesh.creation.box(extents=extents)
@@ -94,6 +96,7 @@ def render_sequence(rig, positions, output_dir, object_radius=0.15,
     for cam in rig.cameras:
         pyr_cam = pyrender.IntrinsicsCamera(
             fx=cam.K[0, 0], fy=cam.K[1, 1], cx=cam.K[0, 2], cy=cam.K[1, 2],
+            zfar=1000.0,   # default 100 would clip the far-range scene
         )
         node = scene.add(pyr_cam, pose=cam.pyrender_pose())
         cam_nodes.append(node)

@@ -25,7 +25,7 @@ from pixel_to_voxel.main import pixel_to_voxel
 from pixel_to_voxel.simulator.rig import CameraRig
 from pixel_to_voxel.simulator import trajectory
 
-SPHERE_RADIUS = 0.15  # metres, matching the renderer's default object
+SPHERE_RADIUS = settings.SIM_OBJECT_RADIUS  # match the simulated object
 
 
 def silhouette_mask(cam, center_world, radius):
@@ -79,8 +79,14 @@ def main():
     print(f"Worst centroid error over {len(positions)} frames: {worst_centroid_err:.3f} m")
     print(f"Worst occupied-voxel distance from true centre: {worst_spread:.3f} m")
 
-    assert worst_centroid_err < 0.075, f"Centroid strayed from the object: {worst_centroid_err}"
-    assert worst_spread < 0.5, f"Voxels far outside the two-view hull: {worst_spread}"
+    # Tolerances scale with the grid: ~2 voxels of centroid slack, and a
+    # spread bound covering the two-view hull's lens-shaped elongation
+    # (~2.5x the object radius at the rig's ~50 deg baseline angle) plus
+    # half a voxel diagonal of discretisation.
+    assert worst_centroid_err < 2.0 * settings.VOXEL_SIZE, \
+        f"Centroid strayed from the object: {worst_centroid_err}"
+    assert worst_spread < 3.0 * SPHERE_RADIUS + settings.VOXEL_SIZE, \
+        f"Voxels far outside the two-view hull: {worst_spread}"
 
     # Empty masks must carve away everything
     empty = {cam.id: np.zeros((cam.height, cam.width), np.uint8) for cam in rig.cameras}

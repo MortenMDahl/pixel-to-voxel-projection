@@ -33,6 +33,10 @@ class SimulatedStream:
         # Present for parity with CameraStream; nothing to spin up.
         return self
 
+    def reset(self):
+        """Rewind to the first frame (e.g. to replay a finished sequence)."""
+        self.index = 0
+
     def read(self):
         """Return the current frame (BGR ndarray), then advance.
 

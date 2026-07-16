@@ -71,7 +71,7 @@ def main():
     # Import the renderer lazily so --no-render works without pyrender installed.
     from .renderer import render_sequence
     print("Rendering frames (this needs the [sim] extras)...")
-    render_sequence(rig, positions, args.output)
+    render_sequence(rig, positions, args.output, object_radius=S.SIM_OBJECT_RADIUS)
     for cam in rig.cameras:
         print(f"  cam{cam.id}: {len(positions)} frames -> "
               f"{os.path.join(args.output, f'cam{cam.id}')}")
